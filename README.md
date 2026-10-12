@@ -30,6 +30,30 @@ not notarized. Gatekeeper may block a copy received from the Internet. Review
 and trust the source before using macOS's explicit approval flow. Do not disable
 Gatekeeper globally.
 
+## Local Launch
+
+From the project root, launch the built macOS app with:
+
+```sh
+open english_helper.app
+```
+
+`english_helper.app` is a tracked relative symbolic link to
+`build/bin/English Helper.app`. You can move the entire project folder and keep
+using the same command. Keep the internal directory structure intact; moving
+only the link or only the app will break it.
+
+The compiled app is not tracked in Git. On a fresh clone, build it first:
+
+```sh
+./scripts/package-macos.sh
+open english_helper.app
+```
+
+Building requires the development tools below; launching an existing build
+does not require Go, Node.js, or an additional server. Rebuilding the app keeps
+the same link valid.
+
 ## Database
 
 SQLite was selected because it is a transactional single-file embedded database
