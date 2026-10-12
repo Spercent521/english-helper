@@ -2,6 +2,23 @@
 
 Initial macOS desktop preview.
 
+## Local Verification
+
+Verified on an Apple Silicon Mac on October 12, 2026:
+
+- `go test -race ./...` and `go vet ./...` passed.
+- All five Playwright tests passed, including live lookup/cache reuse and actual
+  UK/US MP3 decoding and playback with nonzero sample amplitudes.
+- Database tests confirmed no audio bytes/files are persisted and saved words
+  do not trigger dictionary requests.
+- Desktop, minimum-width and mobile-width screenshots were inspected.
+- The packaged native macOS window was launched and visually inspected.
+- The binary contains arm64 and x86_64 slices; ad-hoc signature and ZIP SHA-256
+  validation passed. Intel execution and native macOS audio output have not been
+  separately instrumented; actual playback verification used the browser frontend.
+
+## Changes
+
 - Go + Wails native desktop window with an Edge-inspired interface.
 - Embedded SQLite word database; saved words do not need dictionary requests.
 - Definitions, available examples and phonetic notation.
