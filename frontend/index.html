@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>English Helper</title>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <img src="./mark.svg" alt="" />
+          <div>English Helper<span>你的英语词典</span></div>
+        </div>
+        <nav aria-label="主导航">
+          <button class="nav active" data-view="search">
+            <i data-lucide="search"></i>查单词
+          </button>
+          <button class="nav" data-view="library">
+            <i data-lucide="library"></i>单词库<span id="count">0</span>
+          </button>
+        </nav>
+        <div class="sidebar-bottom">
+          <span class="status-dot"></span>本地词库<span>v0.1.0</span>
+        </div>
+      </aside>
+      <main>
+        <header>
+          <span id="breadcrumb">词典 / 查单词</span
+          ><span class="header-note"
+            ><i data-lucide="hard-drive"></i>SQLite · 本地存储</span
+          >
+        </header>
+        <div id="message" role="status" aria-live="polite"></div>
+        <section id="search-view">
+          <div class="page-heading">
+            <div class="eyebrow">YOUR EVERYDAY DICTIONARY</div>
+            <h1>每一个词，从听懂开始。</h1>
+          </div>
+          <form id="search-form" class="search-box">
+            <i data-lucide="search"></i
+            ><input
+              id="word-input"
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="英文单词"
+              placeholder="输入英文单词…"
+              maxlength="100"
+            />
+            <button
+              type="submit"
+              id="search-button"
+              title="查询单词"
+              aria-label="查询单词"
+            >
+              <i data-lucide="arrow-right"></i>
+            </button>
+          </form>
+          <div id="result"></div>
+          <div id="empty-state">
+            <img class="empty-mark" src="./mark.svg" alt="" />
+            <h2>今天，遇见一个新单词</h2>
+            <div class="suggestions">
+              <button data-word="hello">
+                hello<i data-lucide="arrow-up-right"></i></button
+              ><button data-word="serendipity">
+                serendipity<i data-lucide="arrow-up-right"></i></button
+              ><button data-word="wonder">
+                wonder<i data-lucide="arrow-up-right"></i>
+              </button>
+            </div>
+          </div>
+          <section id="recent-section" class="recent-section">
+            <div class="section-heading">
+              <h2>最近收录</h2>
+              <button id="all-words">
+                全部单词<i data-lucide="arrow-right"></i>
+              </button>
+            </div>
+            <div id="recent-list"></div>
+          </section>
+        </section>
+        <section id="library-view" hidden>
+          <div class="library-heading">
+            <div>
+              <div class="eyebrow">YOUR WORD COLLECTION</div>
+              <h1>单词库</h1>
+              <p id="library-count">0 个已保存单词</p>
+            </div>
+            <label class="sort-label"
+              ><i data-lucide="arrow-down-up"></i
+              ><select id="sort" aria-label="词库排序">
+                <option value="newest">时间 · 最新优先</option>
+                <option value="oldest">时间 · 最早优先</option>
+                <option value="alphabetical">字母 · A 到 Z</option>
+              </select></label
+            >
+          </div>
+          <div class="table-head">
+            <span>单词 / 释义</span><span>收录时间</span>
+          </div>
+          <div id="library-list"></div>
+        </section>
+        <footer>
+          <span>English Helper</span
+          ><span>Free Dictionary API / Wiktionary</span>
+        </footer>
+      </main>
+    </div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

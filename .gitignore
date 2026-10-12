@@ -1,4 +1,8 @@
 build/bin/
+build/preview
+wailsjs/
+artifacts/
+package.json.md5
 node_modules/
 frontend/dist/
 .DS_Store

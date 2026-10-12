@@ -1,0 +1,42 @@
+name: macOS Tests and Build
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: npx playwright install chromium
+      - run: npm run test:ui
+      - run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+      - run: ./scripts/package-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: English-Helper-macos-universal
+          path: |
+            build/bin/*.zip
+            build/bin/*.sha256
