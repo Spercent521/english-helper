@@ -42,8 +42,9 @@ func main() {
 			return
 		}
 		var input struct {
-			Value  string `json:"value"`
-			Accent string `json:"accent"`
+			Value    string `json:"value"`
+			Accent   string `json:"accent"`
+			Provider string `json:"provider"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&input); err != nil {
 			http.Error(w, `{"error":"invalid request"}`, http.StatusBadRequest)
@@ -52,6 +53,10 @@ func main() {
 		var result interface{}
 		var err error
 		switch r.URL.Path {
+		case "/api/cached":
+			result, err = service.Cached(r.Context(), input.Value)
+		case "/api/lookupsource":
+			result, err = service.LookupSource(r.Context(), input.Value, input.Provider)
 		case "/api/lookup":
 			result, err = service.Lookup(r.Context(), input.Value)
 		case "/api/list":

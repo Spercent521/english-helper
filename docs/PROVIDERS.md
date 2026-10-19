@@ -2,15 +2,17 @@
 
 ## Requests
 
-The typed word is sent to Free Dictionary API and the public Youdao dictionary
-endpoint concurrently only when it is not already in the local database.
-The first successful result is used and the other request is cancelled.
+New words are sent to Free Dictionary API and the public Youdao dictionary
+endpoint concurrently. Each successful source is saved separately, and the
+slower response is not discarded. Saved words are read without network requests;
+the user can explicitly query a missing source or retry an unavailable source.
 Audio playback always sends the selected word and accent
 to the public Youdao pronunciation endpoint.
 
 No analytics, telemetry, user accounts, microphone access, or background
 requests are implemented. An existing word's text is read from SQLite without
-requesting dictionary data. Source URLs, pronunciation metadata, definitions,
+requesting dictionary data unless a missing source is explicitly requested.
+Source URLs, pronunciation metadata, definitions,
 examples and creation timestamps are stored locally.
 
 Audio is fetched by Go's HTTP client, which does not implement a persistent HTTP

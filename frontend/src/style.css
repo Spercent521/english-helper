@@ -714,3 +714,50 @@ footer {
   color: #98a6ab;
   font-style: normal;
 }
+.source-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid #dce5e7;
+  margin: 22px 0 0;
+}
+.source-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: transparent;
+  color: #61767c;
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+}
+.source-tabs button[aria-selected="true"] {
+  color: #087f8c;
+  border-bottom-color: #087f8c;
+}
+.source-status {
+  font-size: 10px;
+  color: #87999f;
+}
+.source-status.ready {
+  color: #278a78;
+}
+.source-status.error {
+  color: #b23c3c;
+}
+.source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 8px;
+}
+.source-actions:empty {
+  display: none;
+}
+.source-actions button {
+  background: transparent;
+  color: #087f8c;
+  font-size: 11px;
+  padding: 7px 0;
+}
