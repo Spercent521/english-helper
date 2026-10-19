@@ -302,6 +302,10 @@ function stop() {
     source.disconnect();
     source = undefined;
   }
+  // An empty audio graph can still keep the audio engine active.
+  if (audioContext && audioContext.state !== "closed") {
+    audioContext.suspend().catch(() => {});
+  }
   playButton();
 }
 async function play() {
@@ -319,6 +323,7 @@ async function play() {
     // Unlock the audio context during the user's click, before awaiting the network.
     audioContext ||= new (window.AudioContext || window.webkitAudioContext)();
     await audioContext.resume();
+    if (id !== playbackID) return;
     const recording = await call("Pronounce", word, accent);
     if (id !== playbackID) return;
     const bytes = Uint8Array.from(atob(recording.split(",")[1]), (c) =>
@@ -341,6 +346,10 @@ async function play() {
     }
   }
 }
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stop();
+});
+window.addEventListener("pagehide", stop);
 document
   .querySelectorAll(".nav")
   .forEach((el) => el.addEventListener("click", () => view(el.dataset.view)));

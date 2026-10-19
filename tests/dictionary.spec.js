@@ -86,6 +86,38 @@ async function search(page, word) {
   );
   await expect(page.locator("#search-button")).toBeEnabled({ timeout: 30000 });
 }
+async function trackAudio(page) {
+  await page.addInitScript(() => {
+    const NativeAudioContext = window.AudioContext;
+    window.__audioContexts = [];
+    window.AudioContext = class extends NativeAudioContext {
+      constructor(...args) {
+        super(...args);
+        window.__audioContexts.push(this);
+      }
+    };
+  });
+}
+function testRecording(seconds) {
+  const sampleRate = 8000;
+  const frames = Math.floor(sampleRate * seconds);
+  const wav = Buffer.alloc(44 + frames * 2);
+  wav.write("RIFF", 0);
+  wav.writeUInt32LE(wav.length - 8, 4);
+  wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write("data", 36);
+  wav.writeUInt32LE(frames * 2, 40);
+  for (let i = 0; i < frames; i++)
+    wav.writeInt16LE(Math.round(1000 * Math.sin(2 * Math.PI * 440 * i / sampleRate)), 44 + i * 2);
+  return `data:audio/wav;base64,${wav.toString("base64")}`;
+}
 test("search, saved entries, sorting, errors and returning from library", async ({
   page,
 }) => {
@@ -163,6 +195,7 @@ test("audio failure is visible and retry remains available", async ({
   page,
 }) => {
   await mock(page);
+  await trackAudio(page);
   await page.route("**/api/pronounce", (route) =>
     route.fulfill({
       status: 400,
@@ -176,6 +209,74 @@ test("audio failure is visible and retry remains available", async ({
   await expect(
     page.getByRole("button", { name: "播放在线发音" }),
   ).toBeEnabled();
+  await expect.poll(() => page.evaluate(() => window.__audioContexts[0]?.state))
+    .toBe("suspended");
+});
+test("audio engine is lazy, suspends after ending and can play again", async ({ page }) => {
+  await mock(page);
+  await trackAudio(page);
+  await page.route("**/api/pronounce", (route) =>
+    route.fulfill({ json: testRecording(0.15) }),
+  );
+  await page.goto("/");
+  await search(page, "hello");
+  expect(await page.evaluate(() => window.__audioContexts.length)).toBe(0);
+  for (let i = 0; i < 3; i++) {
+    await page.getByRole("button", { name: "播放在线发音" }).click();
+    await expect.poll(() => page.evaluate(() => window.__audioContexts[0]?.state))
+      .toBe("suspended");
+    await expect(page.locator("#play")).toHaveText("听发音");
+  }
+  expect(await page.evaluate(() => window.__audioContexts.length)).toBe(1);
+});
+for (const action of ["stop", "accent", "library", "hidden", "pagehide"]) {
+  test(`audio engine suspends on ${action}`, async ({ page }) => {
+    await mock(page);
+    await trackAudio(page);
+    await page.route("**/api/pronounce", (route) =>
+      route.fulfill({ json: testRecording(10) }),
+    );
+    await page.goto("/");
+    await search(page, "hello");
+    await page.getByRole("button", { name: "播放在线发音" }).click();
+    await expect(page.locator("#play")).toHaveText("停止");
+    await expect.poll(() => page.evaluate(() => window.__audioContexts[0]?.state))
+      .toBe("running");
+    if (action === "stop") await page.locator("#play").click();
+    if (action === "accent") await page.locator('[data-accent="uk"]').click();
+    if (action === "library") await page.locator("[data-view=library]").click();
+    if (action === "hidden")
+      await page.evaluate(() => {
+        Object.defineProperty(document, "hidden", { configurable: true, value: true });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+    if (action === "pagehide")
+      await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+    await expect.poll(() => page.evaluate(() => window.__audioContexts[0]?.state))
+      .toBe("suspended");
+  });
+}
+test("stopping a pending recording keeps the audio engine suspended", async ({ page }) => {
+  await mock(page);
+  await trackAudio(page);
+  let finishRecording;
+  const recording = new Promise((resolve) => { finishRecording = resolve; });
+  await page.route("**/api/pronounce", async (route) => {
+    await recording;
+    await route.fulfill({ json: testRecording(10) });
+  });
+  await page.goto("/");
+  await search(page, "hello");
+  const response = page.waitForResponse("**/api/pronounce");
+  await page.getByRole("button", { name: "播放在线发音" }).click();
+  await expect(page.locator("#play")).toHaveText("获取中");
+  await page.locator("#play").click();
+  await expect.poll(() => page.evaluate(() => window.__audioContexts[0]?.state))
+    .toBe("suspended");
+  finishRecording();
+  await response;
+  await expect(page.locator("#play")).toHaveText("听发音");
+  expect(await page.evaluate(() => window.__audioContexts[0].state)).toBe("suspended");
 });
 test("live online audio decodes and plays both accents without files", async ({
   page,
@@ -387,6 +488,7 @@ test("late source results do not interrupt pronunciation", async ({ page }) => {
     window.__stops = 0;
     window.AudioContext = class {
       async resume() {}
+      async suspend() {}
       async decodeAudioData() {
         return {};
       }
