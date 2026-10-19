@@ -22,7 +22,11 @@ type App struct {
 	service *dictionary.Service
 }
 
-func (a *App) Lookup(word string) (dictionary.Entry, error)    { return a.service.Lookup(a.ctx, word) }
+func (a *App) Lookup(word string) (dictionary.Entry, error) { return a.service.Lookup(a.ctx, word) }
+func (a *App) Cached(word string) (dictionary.Entry, error) { return a.service.Cached(a.ctx, word) }
+func (a *App) LookupSource(word, provider string) (dictionary.Entry, error) {
+	return a.service.LookupSource(a.ctx, word, provider)
+}
 func (a *App) List(order string) ([]dictionary.Summary, error) { return a.service.List(a.ctx, order) }
 func (a *App) Pronounce(word, accent string) (string, error) {
 	return a.service.Pronounce(a.ctx, word, accent)

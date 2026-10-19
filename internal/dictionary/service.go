@@ -48,16 +48,17 @@ type Example struct {
 }
 
 type Entry struct {
-	Word      string     `json:"word"`
-	Phonetic  string     `json:"phonetic"`
-	Phonetics []Phonetic `json:"phonetics"`
-	Meanings  []Meaning  `json:"meanings"`
-	Source    []string   `json:"sourceUrls"`
-	License   License    `json:"license"`
-	Provider  string     `json:"provider"`
-	Examples  []Example  `json:"examples,omitempty"`
-	SavedAt   string     `json:"savedAt"`
-	Cached    bool       `json:"cached"`
+	Word      string        `json:"word"`
+	Phonetic  string        `json:"phonetic"`
+	Phonetics []Phonetic    `json:"phonetics"`
+	Meanings  []Meaning     `json:"meanings"`
+	Source    []string      `json:"sourceUrls"`
+	License   License       `json:"license"`
+	Provider  string        `json:"provider"`
+	Examples  []Example     `json:"examples,omitempty"`
+	SavedAt   string        `json:"savedAt"`
+	Cached    bool          `json:"cached"`
+	Sources   []SourceEntry `json:"sources,omitempty"`
 }
 
 type Summary struct {

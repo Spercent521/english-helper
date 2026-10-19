@@ -36,7 +36,7 @@ const summaries = [
   },
 ];
 async function mock(page) {
-  const state = { words: [], lookups: [] };
+  const state = { words: [], lookups: [], sources: {} };
   await page.route("**/api/list", async (route) => {
     const { value } = route.request().postDataJSON();
     const rows = [...state.words].sort((a, b) =>
@@ -48,7 +48,7 @@ async function mock(page) {
     );
     await route.fulfill({ json: rows });
   });
-  await page.route("**/api/lookup", async (route) => {
+  await page.route("**/api/cached", async (route) => {
     const { value } = route.request().postDataJSON();
     const word = value.trim().toLowerCase();
     state.lookups.push(word);
@@ -57,11 +57,23 @@ async function mock(page) {
       return;
     }
     const cached = state.words.some((w) => w.word === word);
-    if (!cached)
+    await route.fulfill({
+      json: cached
+        ? { ...entry(word, true), sources: state.sources[word] }
+        : {},
+    });
+  });
+  await page.route("**/api/lookupsource", async (route) => {
+    const { value: word, provider } = route.request().postDataJSON();
+    if (!state.words.some((w) => w.word === word))
       state.words.push(
         summaries.find((w) => w.word === word) || { ...summaries[0], word },
       );
-    await route.fulfill({ json: entry(word, cached) });
+    const result = { ...entry(word), provider };
+    state.sources[word] ||= [];
+    if (!state.sources[word].some((s) => s.provider === provider))
+      state.sources[word].push(result);
+    await route.fulfill({ json: { ...result, sources: state.sources[word] } });
   });
   return state;
 }
@@ -72,7 +84,7 @@ async function search(page, word) {
     word.trim().toLowerCase(),
     { timeout: 30000 },
   );
-  await expect(page.locator("#search-button")).toBeEnabled();
+  await expect(page.locator("#search-button")).toBeEnabled({ timeout: 30000 });
 }
 test("search, saved entries, sorting, errors and returning from library", async ({
   page,
@@ -238,7 +250,170 @@ test("live dictionary search and persisted cache", async ({ page }) => {
     await search(page, word);
     await expect(page.locator(".meaning li").first()).toBeVisible();
     await expect(page.locator(".saved-badge")).toHaveText("已存入词库");
+    await expect(page.getByRole("tab")).toHaveCount(2);
+    await expect(page.locator(".source-status.loading")).toHaveCount(0);
     await search(page, word);
     await expect(page.locator(".saved-badge")).toHaveText("来自本地词库");
   }
+});
+
+test("keeps both sources and lets the reader switch without another request", async ({
+  page,
+}) => {
+  await mock(page);
+  let finishSlow;
+  const slow = new Promise((resolve) => {
+    finishSlow = resolve;
+  });
+  await page.route("**/api/lookupsource", async (route) => {
+    const { value, provider } = route.request().postDataJSON();
+    if (provider === "Free Dictionary API") await slow;
+    const result = { ...entry(value), provider };
+    result.meanings[0].definitions[0].definition =
+      provider === "有道词典" ? "有道释义" : "English definition";
+    if (provider === "有道词典")
+      result.examples = [
+        { sentence: "Youdao-only example.", translation: "有道例句" },
+      ];
+    await route.fulfill({ json: { ...result, sources: [result] } });
+  });
+  await page.goto("/");
+  await page.locator("#word-input").fill("hello");
+  await page.locator("#search-button").click();
+  await expect(page.locator(".meaning li")).toContainText("有道释义");
+  await expect(
+    page.getByRole("tab", { name: /Free Dictionary API/ }),
+  ).toContainText("查询中");
+  finishSlow();
+  await expect(
+    page.getByRole("tab", { name: /Free Dictionary API/ }),
+  ).toContainText("已找到");
+  await expect(page.locator(".meaning li")).toContainText("有道释义");
+  await page.getByRole("tab", { name: /Free Dictionary API/ }).click();
+  await expect(page.locator(".meaning li")).toContainText("English definition");
+  await expect(page.locator(".examples")).toHaveCount(0);
+  await page.getByRole("tab", { name: /有道词典/ }).click();
+  await expect(page.locator(".meaning li")).toContainText("有道释义");
+  await expect(page.locator(".examples")).toContainText("Youdao-only example.");
+  await page.screenshot({
+    path: "artifacts/screenshots/multiple-sources.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 1400 });
+  await page.evaluate(
+    () => new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "artifacts/screenshots/multiple-sources-mobile.png",
+    fullPage: false,
+  });
+});
+
+test("legacy local entries stay offline until a missing source is explicitly requested", async ({
+  page,
+}) => {
+  const state = await mock(page);
+  state.words = [summaries[0]];
+  let requests = 0;
+  page.on("request", (req) => {
+    if (req.url().endsWith("/api/lookupsource")) requests++;
+  });
+  await page.goto("/");
+  await search(page, "hello");
+  await expect(
+    page.getByRole("tab", { name: /Free Dictionary API/ }),
+  ).toContainText("已找到");
+  await expect(page.getByRole("tab", { name: /有道词典/ })).toContainText(
+    "未查询",
+  );
+  expect(requests).toBe(0);
+  await page.getByRole("button", { name: "有道词典 · 查询此来源" }).click();
+  await expect(page.getByRole("tab", { name: /有道词典/ })).toContainText(
+    "已找到",
+  );
+  expect(requests).toBe(1);
+});
+
+test("a failed source stays visible and can be retried without losing the other result", async ({
+  page,
+}) => {
+  await mock(page);
+  let attempts = 0;
+  await page.route("**/api/lookupsource", async (route) => {
+    const { value, provider } = route.request().postDataJSON();
+    if (provider === "Free Dictionary API" && attempts++ === 0) {
+      await route.fulfill({ status: 400, json: { error: "无法连接词典服务" } });
+    } else {
+      const result = { ...entry(value), provider };
+      await route.fulfill({ json: { ...result, sources: [result] } });
+    }
+  });
+  await page.goto("/");
+  await search(page, "hello");
+  await expect(
+    page.getByRole("tab", { name: /Free Dictionary API/ }),
+  ).toContainText("连接失败");
+  await expect(page.locator(".meaning li")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Free Dictionary API · 重试" })
+    .click();
+  await expect(
+    page.getByRole("tab", { name: /Free Dictionary API/ }),
+  ).toContainText("已找到");
+});
+
+test("late source results do not interrupt pronunciation", async ({ page }) => {
+  await mock(page);
+  let finishSlow;
+  const slow = new Promise((resolve) => {
+    finishSlow = resolve;
+  });
+  await page.route("**/api/lookupsource", async (route) => {
+    const { value, provider } = route.request().postDataJSON();
+    if (provider === "Free Dictionary API") await slow;
+    const result = { ...entry(value), provider };
+    await route.fulfill({ json: { ...result, sources: [result] } });
+  });
+  await page.route("**/api/pronounce", (route) =>
+    route.fulfill({ json: "data:audio/mpeg;base64,AA==" }),
+  );
+  await page.addInitScript(() => {
+    window.__stops = 0;
+    window.AudioContext = class {
+      async resume() {}
+      async decodeAudioData() {
+        return {};
+      }
+      createBufferSource() {
+        return {
+          connect() {},
+          disconnect() {},
+          start() {},
+          stop() {
+            window.__stops++;
+          },
+        };
+      }
+    };
+  });
+  await page.goto("/");
+  await page.locator("#word-input").fill("hello");
+  await page.locator("#search-button").click();
+  await expect(page.locator(".word-heading h2")).toHaveText("hello");
+  await page.getByRole("button", { name: "播放在线发音" }).click();
+  await expect(page.locator("#play")).toHaveText("停止");
+  finishSlow();
+  await expect(
+    page.getByRole("tab", { name: /Free Dictionary API/ }),
+  ).toContainText("已找到");
+  await expect(page.locator("#play")).toHaveText("停止");
+  expect(await page.evaluate(() => window.__stops)).toBe(0);
+  await page.locator("#play").click();
+  expect(await page.evaluate(() => window.__stops)).toBe(1);
 });
