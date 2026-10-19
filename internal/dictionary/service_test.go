@@ -3,6 +3,7 @@ package dictionary
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func testService(t *testing.T) *Service {
@@ -332,5 +334,94 @@ func TestLiveProviders(t *testing.T) {
 			}
 			t.Logf("%s %s: %d encoded audio bytes (memory only)", word, accent, len(data))
 		}
+	}
+}
+
+func TestLookupDoesNotWaitForSlowProvider(t *testing.T) {
+	service := testService(t)
+	started := make(chan struct{})
+	cancelled := make(chan struct{})
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+		close(cancelled)
+	}))
+	defer slow.Close()
+	fast := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-started
+		w.Write([]byte(`{"ec":{"word":[{"return-phrase":{"l":{"i":"hello"}},"trs":[{"tr":[{"l":{"i":["A greeting."]}}]}]}]}}`))
+	}))
+	defer fast.Close()
+	service.endpoint = slow.URL + "/"
+	service.fallbackEndpoint = fast.URL
+	done := make(chan error, 1)
+	go func() {
+		entry, err := service.Lookup(context.Background(), "hello")
+		if err == nil && entry.Provider != "有道词典" {
+			err = fmt.Errorf("unexpected provider: %s", entry.Provider)
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("working provider was blocked by slow provider")
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("losing request was not cancelled")
+	}
+}
+
+func TestNotFoundDoesNotHideBehindNetworkFailure(t *testing.T) {
+	for _, missingPrimary := range []bool{true, false} {
+		t.Run(fmt.Sprint(missingPrimary), func(t *testing.T) {
+			service := testService(t)
+			primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if missingPrimary {
+					w.WriteHeader(404)
+				} else {
+					w.WriteHeader(503)
+				}
+			}))
+			defer primary.Close()
+			backup := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if missingPrimary {
+					w.WriteHeader(503)
+				} else {
+					w.Write([]byte(`{}`))
+				}
+			}))
+			defer backup.Close()
+			service.endpoint = primary.URL + "/"
+			service.fallbackEndpoint = backup.URL
+			_, err := service.Lookup(context.Background(), "missingword")
+			if !errors.Is(err, errNotFound) {
+				t.Fatalf("expected not-found, got %v", err)
+			}
+			rows, _ := service.List(context.Background(), "newest")
+			if len(rows) != 0 {
+				t.Fatal("failed lookup saved a word")
+			}
+		})
+	}
+}
+
+func TestMissingPrimaryDoesNotSuppressValidBackup(t *testing.T) {
+	service := testService(t)
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(404) }))
+	defer first.Close()
+	second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"ec":{"word":[{"return-phrase":{"l":{"i":"hello"}},"trs":[{"tr":[{"l":{"i":["A greeting."]}}]}]}]}}`))
+	}))
+	defer second.Close()
+	service.endpoint = first.URL + "/"
+	service.fallbackEndpoint = second.URL
+	if entry, err := service.Lookup(context.Background(), "hello"); err != nil || entry.Provider != "有道词典" {
+		t.Fatalf("valid backup was lost: %+v, %v", entry, err)
 	}
 }

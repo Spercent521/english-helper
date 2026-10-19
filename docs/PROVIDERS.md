@@ -2,9 +2,10 @@
 
 ## Requests
 
-The typed word is sent to Free Dictionary API only when it is not already in the
-local database. If that provider fails, the word is sent to the public Youdao
-dictionary endpoint. Audio playback always sends the selected word and accent
+The typed word is sent to Free Dictionary API and the public Youdao dictionary
+endpoint concurrently only when it is not already in the local database.
+The first successful result is used and the other request is cancelled.
+Audio playback always sends the selected word and accent
 to the public Youdao pronunciation endpoint.
 
 No analytics, telemetry, user accounts, microphone access, or background

@@ -11,8 +11,9 @@ teal interface, Chinese navigation, online UK/US pronunciation, local word histo
 - No accounts, API keys, background updates or paid services.
 - Audio is fetched only on playback and retained only in memory. No audio files
   or audio bytes are stored in SQLite. Offline pronunciation is not provided.
-- Dictionary data comes from Free Dictionary API; a public Youdao endpoint is
-  used as a fallback. Definitions may be English or Chinese depending on source.
+- New words are queried against Free Dictionary API and a public Youdao endpoint
+  concurrently; the first valid result is used. Definitions may be English or
+  Chinese depending on source.
 - Missing provider examples are displayed as missing, not invented.
 
 ## macOS Installation
