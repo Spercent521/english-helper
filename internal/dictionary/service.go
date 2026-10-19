@@ -130,15 +130,7 @@ func (s *Service) Lookup(ctx context.Context, input string) (Entry, error) {
 	if !errors.Is(err, sql.ErrNoRows) {
 		return Entry{}, fmt.Errorf("数据库读取失败: %w", err)
 	}
-	entry, err := s.fetchFree(ctx, word)
-	if err != nil && s.fallbackEndpoint != "" && ctx.Err() == nil {
-		fallback, fallbackErr := s.fetchFallback(ctx, word)
-		if fallbackErr == nil {
-			entry, err = fallback, nil
-		} else if !errors.Is(fallbackErr, errNotFound) {
-			err = fallbackErr
-		}
-	}
+	entry, err := s.fetchOnline(ctx, word)
 	if err != nil {
 		return Entry{}, err
 	}
@@ -165,6 +157,47 @@ func (s *Service) Lookup(ctx context.Context, input string) (Entry, error) {
 }
 
 var errNotFound = errors.New("词典中未找到这个单词，请检查拼写")
+
+func (s *Service) fetchOnline(ctx context.Context, word string) (Entry, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	type result struct {
+		entry Entry
+		err   error
+	}
+	providers := []func(context.Context, string) (Entry, error){s.fetchFree}
+	if s.fallbackEndpoint != "" {
+		providers = append(providers, s.fetchFallback)
+	}
+	// Let a working provider complete immediately; cancellation stops the loser.
+	// Buffer every result so a late response cannot leave a blocked goroutine.
+	results := make(chan result, len(providers))
+	for _, provider := range providers {
+		go func(fetch func(context.Context, string) (Entry, error)) {
+			entry, err := fetch(ctx, word)
+			results <- result{entry, err}
+		}(provider)
+	}
+	notFound := false
+	for range providers {
+		select {
+		case <-ctx.Done():
+			if notFound && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return Entry{}, errNotFound
+			}
+			return Entry{}, errors.New("在线查询超时或已取消，请稍后重试；已保存的单词仍可离线查看")
+		case reply := <-results:
+			if reply.err == nil {
+				return reply.entry, nil
+			}
+			notFound = notFound || errors.Is(reply.err, errNotFound)
+		}
+	}
+	if notFound {
+		return Entry{}, errNotFound
+	}
+	return Entry{}, errors.New("两个在线词典均未能返回有效结果，可能是服务或网络异常，请稍后重试；已保存的单词仍可离线查看")
+}
 
 func (s *Service) fetchFree(ctx context.Context, word string) (Entry, error) {
 	queryCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
