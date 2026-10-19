@@ -11,9 +11,13 @@ teal interface, Chinese navigation, online UK/US pronunciation, local word histo
 - No accounts, API keys, background updates or paid services.
 - Audio is fetched only on playback and retained only in memory. No audio files
   or audio bytes are stored in SQLite. Offline pronunciation is not provided.
-- New words are queried against Free Dictionary API and a public Youdao endpoint
-  concurrently; the first valid result is used. Definitions may be English or
-  Chinese depending on source.
+- New words query Free Dictionary API and a public Youdao endpoint concurrently.
+  Each successful result is shown in its own source tab and saved independently;
+  a faster result no longer discards a slower source. Definitions may be English
+  or Chinese depending on source.
+- Saved words load offline. Legacy entries retain their original source; use
+  "查询此来源" to explicitly fetch any missing source. Unavailable sources have
+  separate status indicators and retry controls.
 - Missing provider examples are displayed as missing, not invented.
 
 ## macOS Installation
